@@ -348,14 +348,14 @@ void flow_update_next_event(struct flow *f, uint64_t duration)
 ssize_t flow_recv_zerocopy(struct flow *f, void *copybuf, size_t copybuf_len) {
         struct tcp_zerocopy_receive zc = {0};
         socklen_t zc_len = sizeof(zc);
-        ssize_t n_read;
+        ssize_t n_read = 0;
         int result;
 
         /* Setup both the mmap address and extra buffer for bytes that aren't
          * zerocopy-able.
          */
         zc.address = (__u64)f->f_rx_zerocopy_buffer;
-        zc.length = copybuf_len; /* Same size used as zerocopy buffer. */
+        zc.length = f->f_rx_zerocopy_buffer_sz; /* Same size used as zerocopy buffer. */
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 82)
         /* The kernel will effectively use copybuf_len as a hint as to what the
@@ -380,6 +380,7 @@ ssize_t flow_recv_zerocopy(struct flow *f, void *copybuf, size_t copybuf_len) {
                 if (result < 0)
                         PLOG_FATAL(f->f_thread->cb, "failed to read extra "
                                         "bytes");
+                n_read += result;
         }
 
         /* Handle zerocopy data. */
@@ -388,7 +389,7 @@ ssize_t flow_recv_zerocopy(struct flow *f, void *copybuf, size_t copybuf_len) {
                 madvise(f->f_rx_zerocopy_buffer, zc.length, MADV_DONTNEED);
         }
 
-        n_read = zc.recv_skip_hint + zc.length;
+        n_read += zc.length;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 82)
         n_read += zc.copybuf_len;
 #endif
